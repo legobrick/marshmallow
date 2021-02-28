@@ -591,6 +591,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         ],
         *,
         error_store: ErrorStore,
+        out_type: typing.Type = typing.Dict,
         many: bool = False,
         partial=False,
         unknown=RAISE,
@@ -600,6 +601,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
 
         :param dict data: The data to deserialize.
         :param ErrorStore error_store: Structure to store errors.
+        :param out_type: The type to deserialize to, default to dictionary.
         :param bool many: `True` if ``data`` should be deserialized as a collection.
         :param bool|tuple partial: Whether to ignore missing fields and not require
             any fields declared. Propagates down to ``Nested`` fields as well. If
@@ -609,7 +611,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             fields in the data. Use `EXCLUDE`, `INCLUDE` or `RAISE`.
         :param int index: Index of the item being serialized (for storing errors) if
             serializing a collection, otherwise `None`.
-        :return: A dictionary of the deserialized data.
+        :return: The deserialized data.
         """
         index_errors = self.opts.index_errors
         index = index if index_errors else None
@@ -618,12 +620,25 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                 error_store.store_error([self.error_messages["type"]], index=index)
                 ret = []  # type: typing.List[_T]
             else:
+                if out_type is not typing.Dict:
+                    args = (
+                        (typing.get_args(out_type) or (out_type,))
+                        if typing.get_origin(out_type) is not None
+                        else (out_type,)
+                    )
+                    if len(args) == 1:
+                        out_type_gen = lambda idx: args[0]
+                    else:
+                        out_type_gen = lambda idx: args[idx]
+                else:
+                    out_type_gen = lambda idx: None
                 ret = [
                     typing.cast(
                         _T,
                         self._deserialize(
                             typing.cast(typing.Mapping[str, typing.Any], d),
                             error_store=error_store,
+                            out_type=out_type_gen(idx),
                             many=False,
                             partial=partial,
                             unknown=unknown,
@@ -633,7 +648,11 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     for idx, d in enumerate(data)
                 ]
             return ret
-        ret = self.dict_class()
+        ret = (
+            out_type()
+            if out_type and not issubclass(out_type, typing.Dict)
+            else self.dict_class()
+        )
         # Check data is a dict
         if not isinstance(data, Mapping):
             error_store.store_error([self.error_messages["type"]], index=index)
@@ -661,6 +680,11 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     d_kwargs["partial"] = sub_partial
                 else:
                     d_kwargs["partial"] = partial
+                if hasattr(out_type, "__annotations__"):
+                    annotations = out_type.__annotations__
+                    annotation = annotations.get(field_name, None)
+                    if annotation:
+                        d_kwargs["out_type"] = annotation
                 getter = lambda val: field_obj.deserialize(
                     val, field_name, data, **d_kwargs
                 )
@@ -673,7 +697,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                 )
                 if value is not missing:
                     key = field_obj.attribute or attr_name
-                    set_value(typing.cast(typing.Dict, ret), key, value)
+                    set_value(ret, key, value)
             if unknown != EXCLUDE:
                 fields = {
                     field_obj.data_key if field_obj.data_key is not None else field_name
@@ -682,7 +706,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                 for key in set(data) - fields:
                     value = data[key]
                     if unknown == INCLUDE:
-                        set_value(typing.cast(typing.Dict, ret), key, value)
+                        set_value(ret, key, value)
                     elif unknown == RAISE:
                         error_store.store_error(
                             [self.error_messages["unknown"]],
@@ -698,6 +722,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             typing.Iterable[typing.Mapping[str, typing.Any]],
         ],
         *,
+        out_type: typing.Type = typing.Dict,
         many: typing.Optional[bool] = None,
         partial: typing.Optional[typing.Union[bool, types.StrSequenceOrSet]] = None,
         unknown: typing.Optional[str] = None
@@ -705,6 +730,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         """Deserialize a data structure to an object defined by this Schema's fields.
 
         :param data: The data to deserialize.
+        :param out_type: The type to deserialize to.
         :param many: Whether to deserialize `data` as a collection. If `None`, the
             value for `self.many` is used.
         :param partial: Whether to ignore missing fields and not require
@@ -723,13 +749,19 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             if invalid data are passed.
         """
         return self._do_load(
-            data, many=many, partial=partial, unknown=unknown, postprocess=True
+            data,
+            out_type=out_type,
+            many=many,
+            partial=partial,
+            unknown=unknown,
+            postprocess=True,
         )
 
     def loads(
         self,
         json_data: str,
         *,
+        out_type: typing.Type = typing.Dict,
         many: typing.Optional[bool] = None,
         partial: typing.Optional[typing.Union[bool, types.StrSequenceOrSet]] = None,
         unknown: typing.Optional[str] = None,
@@ -738,6 +770,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         """Same as :meth:`load`, except it takes a JSON string as input.
 
         :param json_data: A JSON string of the data to deserialize.
+        :param out_type: The type to deserialize to.
         :param many: Whether to deserialize `obj` as a collection. If `None`, the
             value for `self.many` is used.
         :param partial: Whether to ignore missing fields and not require
@@ -756,7 +789,9 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             if invalid data are passed.
         """
         data = self.opts.render_module.loads(json_data, **kwargs)
-        return self.load(data, many=many, partial=partial, unknown=unknown)
+        return self.load(
+            data, many=many, partial=partial, out_type=out_type, unknown=unknown
+        )
 
     def _run_validator(
         self,
@@ -814,6 +849,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             typing.Iterable[typing.Mapping[str, typing.Any]],
         ],
         *,
+        out_type: typing.Type = typing.Dict,
         many: typing.Optional[bool] = None,
         partial: typing.Optional[typing.Union[bool, types.StrSequenceOrSet]] = None,
         unknown: typing.Optional[str] = None,
@@ -823,6 +859,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         This method is private API.
 
         :param data: The data to deserialize.
+        :param out_type: The type to deserialize to
         :param many: Whether to deserialize `data` as a collection. If `None`, the
             value for `self.many` is used.
         :param partial: Whether to validate required fields. If its
@@ -859,6 +896,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             result = self._deserialize(
                 processed_data,
                 error_store=error_store,
+                out_type=out_type,
                 many=many,
                 partial=partial,
                 unknown=unknown,

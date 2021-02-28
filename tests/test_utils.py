@@ -91,7 +91,12 @@ def test_set_value():
     assert d == {"foo": {"bar": 42}}
 
     d = {"foo": 42}
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        (
+            AttributeError,
+            ValueError,
+        )
+    ):
         utils.set_value(d, "foo.bar", 42)
 
 

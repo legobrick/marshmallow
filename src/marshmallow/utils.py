@@ -258,8 +258,8 @@ def _get_value_for_key(obj, key, default):
         return getattr(obj, key, default)
 
 
-def set_value(dct: typing.Dict[str, typing.Any], key: str, value: typing.Any):
-    """Set a value in a dict. If `key` contains a '.', it is assumed
+def set_value(dct: object, key: str, value: typing.Any):
+    """Set a value in a dict or object. If `key` contains a '.', it is assumed
     be a path (i.e. dot-delimited string) to the value's location.
 
     ::
@@ -270,18 +270,42 @@ def set_value(dct: typing.Dict[str, typing.Any], key: str, value: typing.Any):
         {'foo': {'bar': 42}}
     """
     if "." in key:
-        head, rest = key.split(".", 1)
-        target = dct.setdefault(head, {})
-        if not isinstance(target, dict):
+        keys = key.split(".")
+        i = 0
+        target = dct
+        while i < len(keys) - 1:
+            if not isinstance(target, (object, dict)):
+                raise ValueError(
+                    "Cannot set {key} in {head} "
+                    "due to existing value: {target}".format(
+                        key=key, head=".".join(keys[0:i]), target=target
+                    )
+                )
+            if isinstance(target, dict):
+                if not keys[i] in target:
+                    target[keys[i]] = dict()
+                target = target[keys[i]]
+            else:
+                if not hasattr(target, keys[i]):
+                    setattr(target, keys[i], dict())
+                target = getattr(target, keys[i])
+            i += 1
+        if not isinstance(target, (object, dict)):
             raise ValueError(
                 "Cannot set {key} in {head} "
                 "due to existing value: {target}".format(
-                    key=key, head=head, target=target
+                    key=key, head=".".join(keys[0:i]), target=target
                 )
             )
-        set_value(target, rest, value)
+        if isinstance(target, dict):
+            target[keys[i]] = value
+        else:
+            setattr(target, keys[i], value)
     else:
-        dct[key] = value
+        if isinstance(dct, dict):
+            dct[key] = value
+        else:
+            setattr(dct, key, value)
 
 
 def callable_or_raise(obj):
