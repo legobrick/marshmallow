@@ -648,11 +648,11 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     for idx, d in enumerate(data)
                 ]
             return ret
-        ret = (
-            out_type()
-            if out_type and not issubclass(out_type, typing.Dict)
-            else self.dict_class()
-        )
+        if out_type:
+            origin_type = typing.get_origin(out_type) or out_type
+        else:
+            origin_type = self.dict_class
+        ret = origin_type()
         # Check data is a dict
         if not isinstance(data, Mapping):
             error_store.store_error([self.error_messages["type"]], index=index)
