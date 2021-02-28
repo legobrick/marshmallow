@@ -722,15 +722,21 @@ class List(Field):
             return None
         return [self.inner._serialize(each, attr, obj, **kwargs) for each in value]
 
-    def _deserialize(self, value, attr, data, **kwargs) -> typing.List[typing.Any]:
+    def _deserialize(
+        self, value, attr, data, out_type=None, **kwargs
+    ) -> typing.List[typing.Any]:
         if not utils.is_collection(value):
             raise self.make_error("invalid")
 
         result = []
         errors = {}
+        elem_types = typing.get_args(out_type)
+        elem_type = elem_types[0] if len(elem_types) else None
         for idx, each in enumerate(value):
             try:
-                result.append(self.inner.deserialize(each, **kwargs))
+                result.append(
+                    self.inner.deserialize(each, out_type=elem_type, **kwargs)
+                )
             except ValidationError as error:
                 if error.valid_data is not None:
                     result.append(error.valid_data)
