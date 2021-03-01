@@ -313,6 +313,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
 
     _default_error_messages = {
         "type": "Invalid input type.",
+        "out_type": "Invalid output type.",
         "unknown": "Unknown field.",
     }  # type: typing.Dict[str, str]
 
@@ -648,11 +649,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     for idx, d in enumerate(data)
                 ]
             return ret
-        if out_type:
-            origin_type = typing.get_origin(out_type) or out_type
-        else:
-            origin_type = self.dict_class
-        ret = origin_type()
+        ret = self._determine_out_type(out_type, error_store, index)
         # Check data is a dict
         if not isinstance(data, Mapping):
             error_store.store_error([self.error_messages["type"]], index=index)
@@ -1262,6 +1259,25 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                 else:
                     data = processor(data, many=many, **kwargs)
         return data
+
+    def _determine_out_type(
+        self, out_type: typing.Type, error_store: ErrorStore, index=None
+    ):
+        if out_type:
+            origin_type = typing.get_origin(out_type) or out_type
+            if origin_type is typing.Union:
+                args = typing.get_args(out_type)
+                if len(args) == 2 and type(None) in args:
+                    return args[args.index(type(None)) - 1]
+                else:
+                    error_store.store_error(
+                        [self.error_messages["out_type"]], index=index
+                    )
+                    return self.dict_class
+            else:
+                return origin_type()
+        else:
+            return self.dict_class
 
 
 BaseSchema = Schema  # for backwards compatibility
