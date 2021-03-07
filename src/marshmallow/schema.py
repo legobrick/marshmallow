@@ -649,7 +649,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     for idx, d in enumerate(data)
                 ]
             return ret
-        ret = self._determine_out_type(out_type, error_store, index)
+        ret = self._determine_out_type(out_type, error_store, index)()
         # Check data is a dict
         if not isinstance(data, Mapping):
             error_store.store_error([self.error_messages["type"]], index=index)
@@ -1275,7 +1275,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     )
                     return self.dict_class
             else:
-                return origin_type()
+                return origin_type
         else:
             return self.dict_class
 
