@@ -1323,7 +1323,9 @@ class TestSchemaDeserialization:
         assert isinstance(result, list)
         user = result[0]
         assert user["age"] == int(users_data[0]["age"])
-        result = SimpleUserSchema(many=True).load(users_data, out_type=SimpleUser)
+        result = SimpleUserSchema(many=True).load(
+            users_data, out_type=typing.List[SimpleUser]
+        )
         assert isinstance(result, list)
         user = result[0]
         assert user.age == int(users_data[0]["age"])
@@ -1701,7 +1703,7 @@ class TestSchemaDeserialization:
             v.load(bad_data)
         v = Validator(many=True)
         with pytest.raises(ValidationError):
-            v.load(bad_data, out_type=Foo)
+            v.load(bad_data, out_type=typing.List[Foo])
 
     def test_validation_errors_are_stored(self):
         def validate_field(val):
@@ -1930,7 +1932,7 @@ class TestSchemaDeserialization:
         assert "bar" in data[1]
 
         data = MySchema(unknown=INCLUDE, many=True).load(
-            [{"foo": 1}, {"foo": 3, "bar": 5}], out_type=Foo
+            [{"foo": 1}, {"foo": 3, "bar": 5}], out_type=typing.List[Foo]
         )
         assert hasattr(data[1], "foo")
         assert hasattr(data[1], "bar")
@@ -1959,7 +1961,7 @@ class TestSchemaDeserialization:
 
         with pytest.raises(ValidationError) as excinfo:
             MySchema(many=True).load(
-                [{"foo": "abc"}, {"foo": 3, "bar": 5}], out_type=Foo
+                [{"foo": "abc"}, {"foo": 3, "bar": 5}], out_type=typing.List[Foo]
             )
         err = excinfo.value
         assert 0 in err.messages
@@ -2052,7 +2054,7 @@ class TestSchemaDeserialization:
         assert err.messages["bar"] == ["Unknown field."]
         with pytest.raises(ValidationError) as excinfo:
             MySchema(many=True).load(
-                [{"foo": "invalid"}, {"foo": 42, "bar": 24}], out_type=Foo
+                [{"foo": "invalid"}, {"foo": 42, "bar": 24}], out_type=typing.List[Foo]
             )
         err = excinfo.value
         assert 1 not in err.messages

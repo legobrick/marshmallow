@@ -12,7 +12,7 @@ from email.utils import format_datetime, parsedate_to_datetime
 from pprint import pprint as py_pprint
 
 from marshmallow.base import FieldABC
-from marshmallow.exceptions import FieldInstanceResolutionError
+from marshmallow.exceptions import FieldInstanceResolutionError, MarshmallowError
 from marshmallow.warnings import RemovedInMarshmallow4Warning
 
 EXCLUDE = "exclude"
@@ -347,3 +347,31 @@ def resolve_field_instance(cls_or_instance):
         if not isinstance(cls_or_instance, FieldABC):
             raise FieldInstanceResolutionError
         return cls_or_instance
+
+
+def define_out_type(
+    out_type: typing.Type, args: bool = False
+) -> typing.Union[typing.Type, typing.Tuple[typing.Any, typing.Tuple], None]:
+    """Defines the type to use to deserialize an attribute, given the specification and the attribute is present.
+    Removes Optional wrapper, checks for odd Unions.
+
+    :param type|typing.Type out_type: Requested output type.
+    :param type|bool args: If args need to be extracted (i.e. in list fields).
+    """
+    origin_type = typing.get_origin(out_type) or out_type
+    if origin_type is typing.Union:
+        type_args = typing.get_args(out_type)
+        if len(type_args) == 2 and type(None) in type_args:
+            actual_arg = type_args[type_args.index(type(None)) - 1]
+            if args:
+                return typing.get_origin(actual_arg) or actual_arg, typing.get_args(
+                    actual_arg
+                )
+            else:
+                return typing.get_origin(actual_arg)
+        else:
+            raise MarshmallowError(
+                f"Output type is indistinguishable in {str(origin_type)}"
+            )
+    else:
+        return origin_type if not args else (origin_type, typing.get_args(out_type))

@@ -19,6 +19,7 @@ from marshmallow.utils import (
     missing as missing_,
     resolve_field_instance,
     is_aware,
+    define_out_type,
 )
 from marshmallow.exceptions import (
     ValidationError,
@@ -592,7 +593,7 @@ class Nested(Field):
         if many and not utils.is_collection(value):
             raise self.make_error("type", input=value, type=value.__class__.__name__)
 
-    def _load(self, value, data, out_type=typing.Dict, partial=None):
+    def _load(self, value, data, out_type=None, partial=None):
         try:
             valid_data = self.schema.load(
                 value, unknown=self.unknown, out_type=out_type, partial=partial
@@ -723,14 +724,15 @@ class List(Field):
         return [self.inner._serialize(each, attr, obj, **kwargs) for each in value]
 
     def _deserialize(
-        self, value, attr, data, out_type=None, **kwargs
+        self, value, attr, data, out_type=typing.List[typing.Any], **kwargs
     ) -> typing.List[typing.Any]:
         if not utils.is_collection(value):
             raise self.make_error("invalid")
 
         result = []
         errors = {}
-        elem_types = typing.get_args(out_type)
+        actual_type = define_out_type(out_type, args=True)
+        elem_types = typing.get_args(actual_type)
         elem_type = elem_types[0] if len(elem_types) else None
         for idx, each in enumerate(value):
             try:

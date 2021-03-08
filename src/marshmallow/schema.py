@@ -13,7 +13,11 @@ import warnings
 
 from marshmallow import base, fields as ma_fields, class_registry, types
 from marshmallow.error_store import ErrorStore
-from marshmallow.exceptions import ValidationError, StringNotCollectionError
+from marshmallow.exceptions import (
+    ValidationError,
+    StringNotCollectionError,
+    MarshmallowError,
+)
 from marshmallow.orderedset import OrderedSet
 from marshmallow.decorators import (
     POST_DUMP,
@@ -33,6 +37,7 @@ from marshmallow.utils import (
     is_collection,
     is_instance_or_subclass,
     is_iterable_but_not_string,
+    define_out_type,
 )
 from marshmallow.warnings import RemovedInMarshmallow4Warning
 
@@ -592,7 +597,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         ],
         *,
         error_store: ErrorStore,
-        out_type: typing.Type = typing.Dict,
+        out_type: typing.Optional[typing.Type] = None,
         many: bool = False,
         partial=False,
         unknown=RAISE,
@@ -603,6 +608,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         :param dict data: The data to deserialize.
         :param ErrorStore error_store: Structure to store errors.
         :param out_type: The type to deserialize to, default to dictionary.
+            If `None`, either `dict` or OrderedDict` will be used`` based on the ordered param of the schema.
         :param bool many: `True` if ``data`` should be deserialized as a collection.
         :param bool|tuple partial: Whether to ignore missing fields and not require
             any fields declared. Propagates down to ``Nested`` fields as well. If
@@ -621,19 +627,21 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                 error_store.store_error([self.error_messages["type"]], index=index)
                 ret = []  # type: typing.List[_T]
             else:
-                if out_type is not typing.Dict:
-                    args = (
-                        (typing.get_args(out_type) or (out_type,))
-                        if typing.get_origin(out_type) is not None
-                        else (out_type,)
+                if out_type is not None:
+                    out_many_type, args = self._determine_out_type(
+                        out_type, error_store, index, True
                     )
-                    if len(args) == 1:
-                        out_type_gen = lambda idx: args[0]
+                    if args and len(args):
+                        if len(args) == 1:
+                            out_type_gen = lambda idx: args[0]
+                        else:
+                            out_type_gen = lambda idx: args[idx]
                     else:
-                        out_type_gen = lambda idx: args[idx]
+                        out_type_gen = lambda idx: self.dict_class
                 else:
-                    out_type_gen = lambda idx: None
-                ret = [
+                    out_type_gen = lambda idx: self.dict_class
+                    out_many_type = list
+                ret = out_many_type(
                     typing.cast(
                         _T,
                         self._deserialize(
@@ -647,9 +655,11 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                         ),
                     )
                     for idx, d in enumerate(data)
-                ]
+                )
             return ret
-        ret = self._determine_out_type(out_type, error_store, index)()
+        ret = self._determine_out_type(
+            out_type or self.dict_class, error_store, index
+        )()
         # Check data is a dict
         if not isinstance(data, Mapping):
             error_store.store_error([self.error_messages["type"]], index=index)
@@ -719,7 +729,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             typing.Iterable[typing.Mapping[str, typing.Any]],
         ],
         *,
-        out_type: typing.Type = typing.Dict,
+        out_type: typing.Optional[typing.Type] = None,
         many: typing.Optional[bool] = None,
         partial: typing.Optional[typing.Union[bool, types.StrSequenceOrSet]] = None,
         unknown: typing.Optional[str] = None
@@ -758,7 +768,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         self,
         json_data: str,
         *,
-        out_type: typing.Type = typing.Dict,
+        out_type: typing.Optional[typing.Type] = None,
         many: typing.Optional[bool] = None,
         partial: typing.Optional[typing.Union[bool, types.StrSequenceOrSet]] = None,
         unknown: typing.Optional[str] = None,
@@ -846,7 +856,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
             typing.Iterable[typing.Mapping[str, typing.Any]],
         ],
         *,
-        out_type: typing.Type = typing.Dict,
+        out_type: typing.Optional[typing.Type] = None,
         many: typing.Optional[bool] = None,
         partial: typing.Optional[typing.Union[bool, types.StrSequenceOrSet]] = None,
         unknown: typing.Optional[str] = None,
@@ -1261,23 +1271,14 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         return data
 
     def _determine_out_type(
-        self, out_type: typing.Type, error_store: ErrorStore, index=None
+        self, out_type: typing.Type, error_store: ErrorStore, index=None, args=False
     ):
-        if out_type:
-            origin_type = typing.get_origin(out_type) or out_type
-            if origin_type is typing.Union:
-                args = typing.get_args(out_type)
-                if len(args) == 2 and type(None) in args:
-                    return args[args.index(type(None)) - 1]
-                else:
-                    error_store.store_error(
-                        [self.error_messages["out_type"]], index=index
-                    )
-                    return self.dict_class
-            else:
-                return origin_type
-        else:
+        try:
+            ret_type = define_out_type(out_type, args=args)
+        except MarshmallowError:
+            error_store.store_error([self.error_messages["out_type"]], index=index)
             return self.dict_class
+        return ret_type
 
 
 BaseSchema = Schema  # for backwards compatibility
