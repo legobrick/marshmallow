@@ -37,7 +37,8 @@ from marshmallow.utils import (
     is_collection,
     is_instance_or_subclass,
     is_iterable_but_not_string,
-    define_out_type,
+    define_out_type_many,
+    define_out_type_scalar,
 )
 from marshmallow.warnings import RemovedInMarshmallow4Warning
 
@@ -1273,8 +1274,9 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
     def _determine_out_type(
         self, out_type: typing.Type, error_store: ErrorStore, index=None, args=False
     ):
+        define = define_out_type_many if args else define_out_type_scalar
         try:
-            ret_type = define_out_type(out_type, args=args)
+            ret_type = define(out_type)
         except MarshmallowError:
             error_store.store_error([self.error_messages["out_type"]], index=index)
             return self.dict_class

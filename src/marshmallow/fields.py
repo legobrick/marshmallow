@@ -19,7 +19,7 @@ from marshmallow.utils import (
     missing as missing_,
     resolve_field_instance,
     is_aware,
-    define_out_type,
+    define_out_type_many,
 )
 from marshmallow.exceptions import (
     ValidationError,
@@ -729,11 +729,10 @@ class List(Field):
         if not utils.is_collection(value):
             raise self.make_error("invalid")
 
-        result = []
         errors = {}
-        actual_type = define_out_type(out_type, args=True)
-        elem_types = typing.get_args(actual_type)
-        elem_type = elem_types[0] if len(elem_types) else None
+        out_types = define_out_type_many(out_type)
+        result = out_types[0]() if out_types else []
+        elem_type = out_types[1][0] if out_types and len(out_types[1]) else None
         for idx, each in enumerate(value):
             try:
                 result.append(
