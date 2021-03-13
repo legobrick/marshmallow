@@ -34,10 +34,7 @@ class ValidationError(MarshmallowError):
             ]
         ] = None,
         valid_data: typing.Optional[
-            typing.Union[
-                typing.List[typing.Dict[str, typing.Any]],
-                typing.Dict[str, typing.Any],
-            ]
+            typing.Union[typing.List, typing.Dict[str, typing.Any], object]
         ] = None,
         **kwargs
     ):

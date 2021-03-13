@@ -724,7 +724,7 @@ class List(Field):
         return [self.inner._serialize(each, attr, obj, **kwargs) for each in value]
 
     def _deserialize(
-        self, value, attr, data, out_type=typing.List[typing.Any], **kwargs
+        self, value, attr, data, out_type=typing.List, **kwargs
     ) -> typing.List[typing.Any]:
         if not utils.is_collection(value):
             raise self.make_error("invalid")

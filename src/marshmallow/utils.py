@@ -5,6 +5,7 @@ import datetime as dt
 import inspect
 import json
 import re
+import sys
 import typing
 import warnings
 from collections.abc import Mapping
@@ -349,7 +350,7 @@ def resolve_field_instance(cls_or_instance):
         return cls_or_instance
 
 
-def __define_out_type(out_type: typing.Type) -> typing.Optional[typing.Type]:
+def __define_out_type(out_type: typing.Type) -> typing.Type:
     origin_type = typing.get_origin(out_type) or out_type
     if origin_type is typing.Union:
         type_args = typing.get_args(out_type)
@@ -364,7 +365,9 @@ def __define_out_type(out_type: typing.Type) -> typing.Optional[typing.Type]:
         return out_type
 
 
-def define_out_type_scalar(out_type: typing.Type) -> typing.Optional[typing.Type]:
+def define_out_type_scalar(
+    out_type: typing.Type[object],
+) -> typing.Type[object]:
     """Defines the type to use to deserialize an attribute, given the typing specification.
     Removes Optional wrapper, checks for odd Unions.
 
@@ -376,11 +379,32 @@ def define_out_type_scalar(out_type: typing.Type) -> typing.Optional[typing.Type
 
 def define_out_type_many(
     out_type: typing.Type,
-) -> typing.Optional[typing.Tuple[typing.Any, typing.Tuple]]:
+) -> typing.Optional[typing.Tuple[typing.Type[typing.List], typing.Tuple]]:
     """Defines the type to use to deserialize an collection composed by an attribute type,
     given the typing specification. Removes Optional wrapper, checks for odd Unions, infers the elements' type
 
-    :param type|typing.Type out_type: Requested output type.
+    :param type|typing.List out_type: Requested output type.
     """
-    ret = __define_out_type(out_type)
-    return typing.get_origin(ret) or ret, typing.get_args(ret)
+    unwrapped = __define_out_type(out_type)
+    ret = typing.get_origin(unwrapped) or unwrapped
+    # At the moment only lists are supported
+    assert issubclass(ret, list)
+    return ret, typing.get_args(unwrapped)
+
+
+def get_instance(typ: typing.Type[object]):
+    if sys.version_info >= (3, 3):
+        sig = inspect.signature(typ.__init__)
+        if all(
+            param.default != inspect.Parameter.empty
+            for param in sig.parameters.values()
+        ):
+            return typ()
+        else:
+            return typ.__new__(typ)
+    else:
+        argspec = inspect.getfullargspec(typ.__init__)
+        if argspec.defaults is not None and len(argspec.args) == len(argspec.defaults):
+            return typ()
+        else:
+            return typ.__new__(typ)

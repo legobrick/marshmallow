@@ -39,6 +39,7 @@ from marshmallow.utils import (
     is_iterable_but_not_string,
     define_out_type_many,
     define_out_type_scalar,
+    get_instance,
 )
 from marshmallow.warnings import RemovedInMarshmallow4Warning
 
@@ -626,7 +627,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
         if many:
             if not is_collection(data):
                 error_store.store_error([self.error_messages["type"]], index=index)
-                ret = []  # type: typing.List[_T]
+                ret_many = []  # type: typing.List[_T]
             else:
                 if out_type is not None:
                     out_many_type, args = self._determine_out_type(
@@ -642,7 +643,7 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                 else:
                     out_type_gen = lambda idx: self.dict_class
                     out_many_type = list
-                ret = out_many_type(
+                ret_many = out_many_type(
                     typing.cast(
                         _T,
                         self._deserialize(
@@ -657,10 +658,12 @@ class Schema(base.SchemaABC, metaclass=SchemaMeta):
                     )
                     for idx, d in enumerate(data)
                 )
-            return ret
-        ret = self._determine_out_type(
+            return ret_many
+        ret_type = self._determine_out_type(
             out_type or self.dict_class, error_store, index
-        )()
+        )
+
+        ret = get_instance(ret_type)  # type: _T
         # Check data is a dict
         if not isinstance(data, Mapping):
             error_store.store_error([self.error_messages["type"]], index=index)
